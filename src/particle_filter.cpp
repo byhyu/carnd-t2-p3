@@ -19,11 +19,39 @@
 
 using namespace std;
 
+#define DEBUG
+
 void ParticleFilter::init(double x, double y, double theta, double std[]) {
 	// TODO: Set the number of particles. Initialize all particles to first position (based on estimates of 
 	//   x, y, theta and their uncertainties from GPS) and all weights to 1. 
 	// Add random Gaussian noise to each particle.
 	// NOTE: Consult particle_filter.h for more information about this method (and others in this file).
+
+    #ifdef DEBUG
+    cout << "======== Init Particles ====== " << endl;
+    #endif
+
+    num_particles = 100;
+    default_random_engine gen;
+    normal_distribution<double> dist_x(x, std[0]);
+    normal_distribution<double> dist_y(y, std[1]);
+    normal_distribution<double> dist_theta(theta, std[2]);
+
+// Init weigths with 1.0
+    weights.resize(num_particles);
+    fill(weights.begin(), weights.end(), 1.0);
+
+    // init particles
+    for (int i = 0; i <num_particles; ++i) {
+        Particle p;
+        p.id = i;
+        p.x = dist_x(gen);
+        p.y = dist_y(gen);
+        p.theta = dist_theta(gen);
+        p.weight = weights[i];
+        particles.push_back(p);
+    }
+    is_initialized = true;
 
 }
 
@@ -33,6 +61,45 @@ void ParticleFilter::prediction(double delta_t, double std_pos[], double velocit
 	//  http://en.cppreference.com/w/cpp/numeric/random/normal_distribution
 	//  http://www.cplusplus.com/reference/random/default_random_engine/
 
+#ifdef DEBUG
+    cout << "======== Prediction ====== " << endl;
+#endif
+
+    default_random_engine gen;
+    normal_distribution<double> dist_x(x, std_pos[0]);
+    normal_distribution<double> dist_y(y, std_pos[1]);
+    normal_distribution<double> dist_theta(theta, std_pos[2]);
+
+    for (int i = 0; i < num_particles; ++i) {
+
+#ifdef DEBUG
+        printf("Particle %4d: (%f, %f, %f)->", particles[i].id, particles[i].x, particles[i].y, particles[i].theta);
+#endif
+
+        double travel_dist = 0; // either yaw dist or forward dist
+        if (abs(yaw_rate) <= 1e-10) {
+            travel_dist = velocity * delta_t;  // distance
+            particles[i].x += travel_dist * cos(particles[i].theta) + dist_x(gen);
+            particles[i].y += travel_dist * sin(particles[i].theta) + dist_y(gen);
+            particles[i].theta += dist_theta(gen);
+        } else {
+            double v_scale = velocity / yaw_rate;
+            travel_dist = yaw_rate * delta_t;  // rotational distance
+            particles[i].x += v_scale * (sin(particles[i].theta + travel_dist) - sin(particles[i].theta)) + nd_x(gen);
+            particles[i].y += v_scale * (cos(particles[i].theta) - cos(particles[i].theta + travel_dist)) + nd_y(gen);
+            particles[i].theta += travel_dist + dist_theta(gen);
+        }
+        particles[i].theta = fmod(particles[i].theta, 2 * M_PI);  //TODO: Normalize or not?
+
+        #ifdef DEBUG
+        printf("(%f, %f, %f)\n", particles[i].x, particles[i].y, particles[i].theta);
+        #endif
+
+    }
+#ifdef DEBUG
+    cout << "finished prediction" << endl;
+#endif
+
 }
 
 void ParticleFilter::dataAssociation(std::vector<LandmarkObs> predicted, std::vector<LandmarkObs>& observations) {
@@ -41,6 +108,22 @@ void ParticleFilter::dataAssociation(std::vector<LandmarkObs> predicted, std::ve
 	// NOTE: this method will NOT be called by the grading code. But you will probably find it useful to 
 	//   implement this method and use it as a helper during the updateWeights phase.
 
+#ifdef DEBUG
+    cout << "======= data association =======";
+#endif
+
+    for (int i = 0; i < observations.size(); i++) {
+        double curr_dist = 0;
+        double closest_dist = numeric_limits<double>::max();
+        for (int j = 0; j < predicted.size(); j++) {
+            curr_dist = abs(dist(predicted[j].x, predicted[j].y, observations[i].x, observations[i].y));
+            if (curr_dist < closest_dist) {
+                observations[i].id = predicted[j].id;
+                closest_dist = curr_dist;
+            }
+        }
+
+    }
 }
 
 void ParticleFilter::updateWeights(double sensor_range, double std_landmark[], 
@@ -55,6 +138,13 @@ void ParticleFilter::updateWeights(double sensor_range, double std_landmark[],
 	//   and the following is a good resource for the actual equation to implement (look at equation 
 	//   3.33
 	//   http://planning.cs.uiuc.edu/node99.html
+
+#ifdef DEBUG
+    cout << "======= Update Weights ======="<<endl;
+#endif
+
+
+
 }
 
 void ParticleFilter::resample() {
